@@ -1,0 +1,182 @@
+#!/bin/bash -e
+
+# oVirt system tests tracker
+# Copyright (C) 2018-2019 Dan Kenigsberg
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+function help() {
+   cat <<EOF
+to use $0 you must make some preparations:
+$ yum install dnf
+
+OPTIONS:
+
+--project ovirt-project-name
+--keep-cache
+    do not pull dnf cache again
+--help
+    preset this help page
+EOF
+}
+
+function log() {
+    if [[ -n "$DEBUG" ]]; then
+       echo "LOG $*" >&2
+    fi
+}
+
+function logexec() {
+    log "$@"
+    "$@"
+}
+
+function dbgcat() {
+    if [[ -n "$DEBUG" ]]; then
+        log "$@"
+        cat
+    else
+        "$@"
+    fi
+}
+
+function last_tested() {
+    local project=$1
+    if [[ -n "$DEBUG_FAKE_RED" ]]; then
+	logexec echo "$project.gitorigin/master~100.el7.rpm"
+	return 0
+    fi
+
+    logexec dnf repoquery --repofrompath=x,https://plain.resources.ovirt.org/repos/ovirt/tested/master/rpm/el7 \
+           --latest-limit 1 --repoid=x list "$project" -q --arch src
+}
+
+function last_tested_hash() {
+    echo "$1" | sed 's/.*git//;s/.el7.*//'
+}
+
+function greenish_cq() {
+    # fail if OST is not green-ish, i.e. the change queue is non-empty for a
+    # long time. We do not want to see new code until OST is back to normal,
+    # accepting new code.
+
+    local project=$1
+    local keepcache=$2
+
+    if [[ "$keepcache" -ne keep ]]; then
+        logexec dnf clean expire-cache -q
+    fi
+
+    local last_tested_rpm=$(last_tested "$project")
+    local testedhash=$(last_tested_hash "$last_tested_rpm")
+    echo "latest tested build is $last_tested_rpm with githash $testedhash"
+
+    git_clone "$project" > /dev/null
+    pushd `git_dir "$project"` > /dev/null
+    git fetch origin > /dev/null
+
+    if ! $(git show "$testedhash" > /dev/null 2> /dev/null); then
+        echo "git hash $testedhash not found, considering OST as green."
+        return 0
+    fi
+
+    local gitlog=`mktemp`
+    git log --oneline "$testedhash..origin/master" > "$gitlog"
+    local commits_since_tested=$(wc -l < "$gitlog")
+
+    if [[ "$commits_since_tested" -eq 0 ]]; then
+	log "no commits since $testedhash"
+	return 0
+    fi
+
+    local untestedhash=`git log --format=%h origin/master~$[commits_since_tested-1] -n 1`
+
+    local timediff='3 days'
+
+    local first_untested_time=$(git log --format=%ct -1 "$untestedhash")
+    echo "first untested change: $(git log --format='%h %s' -1 $untestedhash)"
+    echo "it was committed $(git log --format='%cr (%ci)' -1 $untestedhash)"
+    if [[ "$first_untested_time" -lt $(date -d "$timediff ago" +%s) ]]; then
+        echo "more than $timediff have passed since $untestedhash." \
+            "Please do not commit new patches unless they fix this breakage."
+        echo
+        echo "The following changes are stuck in the queue:"
+        cat "$gitlog"
+        rm "$gitlog"
+        echo
+        return 1
+    else
+        log "$last_tested_rpm is rather new"
+    fi
+    rm "$gitlog"
+}
+
+function git_dir() {
+    echo "/var/tmp/ovirt/$1.git"
+}
+
+function git_clone() {
+    local project=$1
+    branch=master
+
+    mkdir -p $(git_dir "$project")
+    pushd $(git_dir "$project") > /dev/null
+    git clone --quiet -b "$branch" --single-branch \
+        "http://gerrit.ovirt.org/p/$project.git"  --depth=30 .
+    popd > /dev/null
+}
+
+while (( "$#" )); do
+    case "$1" in
+        -p|--project)
+            project=$2
+            shift 2
+            ;;
+        -d|--debug)
+            DEBUG=1
+            shift
+            ;;
+        -k|--keep-cache)
+            keepcache=keep
+            shift
+            ;;
+        -h|--help)
+            help
+            exit 1
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "unexpected argument $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+function main() {
+    local project=$1
+    local keepcache=$2
+
+    local outfile=`mktemp`
+    if ! greenish_cq "$project" "$keepcache" > "$outfile"; then
+        cat "$outfile"
+    else
+        log echo "ost is green"
+    fi
+    rm "$outfile"
+}
+
+main "$project" "$keepcache"
