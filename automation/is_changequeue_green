@@ -74,7 +74,7 @@ function greenish_cq() {
     local project=$1
     local keepcache=$2
 
-    if [[ "$keepcache" -ne keep ]]; then
+    if [[ "$keepcache" != keep ]]; then
         logexec dnf clean expire-cache -q
     fi
 
