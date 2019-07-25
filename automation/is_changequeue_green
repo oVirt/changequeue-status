@@ -82,7 +82,7 @@ function greenish_cq() {
     local testedhash=$(last_tested_hash "$last_tested_rpm")
     echo "latest tested build is $last_tested_rpm with githash $testedhash"
 
-    git_clone "$project" > /dev/null
+    git_clone "$project" > /dev/null || return $?
     pushd `git_dir "$project"` > /dev/null
     git fetch origin > /dev/null
 
@@ -134,7 +134,9 @@ function git_clone() {
     pushd $(git_dir "$project") > /dev/null
     git clone --quiet -b "$branch" --single-branch \
         "http://gerrit.ovirt.org/p/$project.git"  --depth=30 .
+    ret=$?
     popd > /dev/null
+    return "$ret"
 }
 
 while (( "$#" )); do
@@ -173,6 +175,7 @@ function main() {
     local outfile=`mktemp`
     if ! greenish_cq "$project" "$keepcache" > "$outfile"; then
         cat "$outfile"
+        return 1
     else
         log echo "ost is green"
     fi
