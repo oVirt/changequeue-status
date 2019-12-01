@@ -1,5 +1,7 @@
 #!/bin/bash -xe
 
+export LC_ALL=C
+
 automation/is_changequeue_green --project vdsm --debug || color=red
 automation/is_changequeue_green --project ovirt-engine --keep-cache --debug || color=red
 
