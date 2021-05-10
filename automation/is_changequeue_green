@@ -54,16 +54,16 @@ function dbgcat() {
 function last_tested() {
     local project=$1
     if [[ -n "$DEBUG_FAKE_RED" ]]; then
-	logexec echo "$project.gitorigin/master~100.el7.rpm"
+	logexec echo "$project.gitorigin/master~100.el8.rpm"
 	return 0
     fi
 
-    logexec dnf repoquery --repofrompath=x,https://plain.resources.ovirt.org/repos/ovirt/tested/master/rpm/el7 \
+    logexec dnf repoquery --repofrompath=x,https://plain.resources.ovirt.org/repos/ovirt/tested/master/rpm/el8 \
            --latest-limit 1 --repoid=x list "$project" -q --arch src
 }
 
 function last_tested_hash() {
-    echo "$1" | sed 's/.*git//;s/.el7.*//'
+    echo "$1" | sed 's/.*git//;s/.el8.*//'
 }
 
 function greenish_cq() {
