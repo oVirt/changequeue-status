@@ -1,5 +1,12 @@
 # changequeue-status
 
+
+> IMPORTANT: This project has been dropped from oVirt.
+>
+> Keeping the following section only for reference.
+
+
+
 Welcome to the oVirt changequeue-status source repository.
 
 This repository is hosted on [gerrit.ovirt.org:changequeue-status](https://gerrit.ovirt.org/#/admin/projects/changequeue-status)
